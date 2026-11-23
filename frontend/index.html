@@ -228,11 +228,24 @@
       } catch (e) {}
     }
 
-    async function refreshFiles(autoPreviewIfHtml = false) {
+    async function refreshFiles(autoPreviewIfHtml = false, incomingFiles = null) {
       try {
-        const res = await fetch('/api/files');
-        const data = await res.json();
-        workspaceFiles = data.files || [];
+        if (incomingFiles && incomingFiles.length) {
+          const map = new Map(workspaceFiles.map(f => [f.filename, f]));
+          incomingFiles.forEach(f => map.set(f.filename, f));
+          workspaceFiles = Array.from(map.values());
+          localStorage.setItem('custom_ai_workspace_files', JSON.stringify(workspaceFiles));
+        } else {
+          const cached = localStorage.getItem('custom_ai_workspace_files');
+          if (cached) {
+            workspaceFiles = JSON.parse(cached);
+          } else {
+            const res = await fetch('/api/files');
+            const data = await res.json();
+            workspaceFiles = data.files || [];
+          }
+        }
+
         const pills = document.getElementById('filePills');
         pills.innerHTML = '';
 
@@ -266,6 +279,21 @@
       document.getElementById('codeViewer').textContent = fobj ? fobj.content : '';
     }
 
+    function buildInlineHtml() {
+      const htmlObj = workspaceFiles.find(f => f.filename === 'index.html');
+      if (!htmlObj) return '<p style="font-family:sans-serif;padding:20px;">No index.html found yet.</p>';
+      let html = htmlObj.content;
+      const cssObj = workspaceFiles.find(f => f.filename === 'styles.css' || f.filename === 'style.css');
+      if (cssObj) {
+        html = html.replace(/<link[^>]*href=["']styles?\.css["'][^>]*>/i, `<style>${cssObj.content}</style>`);
+      }
+      const jsObj = workspaceFiles.find(f => f.filename === 'script.js' || f.filename === 'app.js');
+      if (jsObj) {
+        html = html.replace(/<script[^>]*src=["'](script|app)\.js["'][^>]*><\/script>/i, `<script>${jsObj.content}<\/script>`);
+      }
+      return html;
+    }
+
     function switchTab(tab) {
       currentTab = tab;
       document.getElementById('tabCode').classList.toggle('active', tab === 'code');
@@ -275,7 +303,7 @@
       if (tab === 'preview') {
         codeEl.style.display = 'none';
         frameEl.style.display = 'block';
-        frameEl.src = '/api/preview/index.html?t=' + Date.now();
+        frameEl.srcdoc = buildInlineHtml();
       } else {
         frameEl.style.display = 'none';
         codeEl.style.display = 'block';
@@ -283,6 +311,8 @@
     }
 
     async function clearFiles() {
+      workspaceFiles = [];
+      localStorage.removeItem('custom_ai_workspace_files');
       await fetch('/api/files', { method: 'DELETE' });
       selectedFile = null;
       switchTab('code');
@@ -349,7 +379,7 @@
         history.push({ role: 'user', content: prompt });
         history.push({ role: 'assistant', content: data.final_response });
         if (data.created_files && data.created_files.length) {
-          await refreshFiles(true);
+          await refreshFiles(true, data.files);
         }
       } catch (err) {
         appendAiMsg({

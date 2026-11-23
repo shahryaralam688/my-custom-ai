@@ -344,6 +344,7 @@ button { background: #7c5cff; color: #fff; border: none; padding: 12px 22px; bor
         "thinking": thinking,
         "final_response": final_answer,
         "created_files": created_files,
+        "files": db.get_generated_files(db_path=app.state.db_path) if created_files else [],
         "latency_ms": latency_ms,
     }
 
