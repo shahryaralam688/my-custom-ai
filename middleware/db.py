@@ -109,7 +109,7 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
         """,
         (
             "v1.0-base",
-            "Qwen/Qwen3-32B",
+            "Qwen/Qwen3-4B",
             None,
             "Initial base model before custom fine-tuning",
             datetime.now(timezone.utc).isoformat(),

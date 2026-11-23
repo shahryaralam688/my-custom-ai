@@ -96,7 +96,7 @@ class SettingsRequest(BaseModel):
 
 class VersionRequest(BaseModel):
     version: str
-    base_model: str = "Qwen/Qwen3-32B"
+    base_model: str = "Qwen/Qwen3-4B"
     train_loss: Optional[float] = None
     dataset_notes: str = ""
 
