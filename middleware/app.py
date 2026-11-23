@@ -1,3 +1,4 @@
+import mimetypes
 import re
 import time
 from pathlib import Path
@@ -5,13 +6,34 @@ from typing import Optional, List, Dict, Any, Tuple
 
 import httpx
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from middleware import db
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+
+AGENT_INSTRUCTIONS = """
+You are an Agentic Coding Assistant with access to Cloud Workspace file tools.
+When the user asks you to build a website, app, or write code files, create real files using these XML tool blocks:
+
+<tool_call name="write_file" path="index.html">
+...full file content...
+</tool_call>
+
+<tool_call name="write_file" path="styles.css">
+...full file content...
+</tool_call>
+
+You can also inspect existing files using:
+<tool_call name="list_files"></tool_call>
+<tool_call name="read_file" path="index.html"></tool_call>
+
+Rules:
+- Always write complete, working files with no placeholders.
+- Keep your explanation concise after creating the files.
+"""
 
 app = FastAPI(title="Custom Qwen3 AI — Middle Observability & Chat Hub")
 app.state.db_path = db.DEFAULT_DB_PATH
@@ -36,10 +58,28 @@ def parse_thinking_response(raw_text: str) -> Tuple[str, str]:
     return "", raw_text.strip()
 
 
+def extract_tool_calls(text: str) -> Tuple[List[Dict[str, str]], str]:
+    """Extract <tool_call name="..." path="...">...</tool_call> blocks and return cleaned text."""
+    calls: List[Dict[str, str]] = []
+    pattern = re.compile(
+        r'<tool_call\s+name="([^"]+)"(?:\s+path="([^"]*)")?\s*>(.*?)</tool_call>',
+        flags=re.DOTALL,
+    )
+    for m in pattern.finditer(text):
+        calls.append({
+            "name": m.group(1).strip(),
+            "path": (m.group(2) or "").strip(),
+            "content": m.group(3).strip(),
+        })
+    cleaned = pattern.sub("", text).strip()
+    return calls, cleaned
+
+
 class ChatRequest(BaseModel):
     prompt: str
     history: List[Dict[str, str]] = []
     enable_thinking: bool = True
+    agent_mode: bool = True
 
 
 class FeedbackRequest(BaseModel):
@@ -135,36 +175,156 @@ async def chat_endpoint(req: ChatRequest):
     settings = db.get_settings(app.state.db_path)
     colab_url = settings.get("colab_url", "").strip()
     system_prompt = settings.get("system_prompt", db.DEFAULT_SYSTEM_PROMPT)
+    if req.agent_mode:
+        system_prompt = system_prompt + "\n\n" + AGENT_INSTRUCTIONS
     active_version = settings.get("active_version", "v1.0-base")
 
     start = time.perf_counter()
+    created_files: List[str] = []
 
     if not colab_url:
-        thinking = "Demo Mode: Colab GPU URL abhi set nahi hai."
-        final_answer = (
-            "Abhi aap **Demo Mode** mein hain kyunki Colab Tunnel URL set nahi hai.\n\n"
-            "1. Google Colab mein `02_serve_qwen3_colab.ipynb` run karein.\n"
-            "2. Jo `https://....trycloudflare.com` URL mile, usay `/dashboard` par paste karein.\n"
-            "3. Uske baad yahan aapka apna **Qwen3-32B** model live jawab dega!"
-        )
+        lower_p = req.prompt.lower()
+        if req.agent_mode and any(k in lower_p for k in ["website", "web", "html", "portfolio", "landing", "site", "page"]):
+            thinking = (
+                "Demo Agent Mode: User ne website banane ko kaha hai. "
+                "Main `index.html`, `styles.css`, aur `script.js` cloud storage mein create kar raha hoon."
+            )
+            db.save_generated_file(
+                "index.html",
+                """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Custom AI Demo Site</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <nav class="nav">
+    <div class="logo">MyAI Studio</div>
+    <a href="#contact" class="cta">Get Started</a>
+  </nav>
+  <section class="hero">
+    <h1>Built by Your Custom AI Agent</h1>
+    <p>Yeh website aapke Agent Mode ne cloud storage mein khud banayi hai. Right-side panel mein files aur Live Preview dekhein!</p>
+    <button id="demoBtn">Test Interactive JS</button>
+    <p id="demoMsg"></p>
+  </section>
+  <section class="cards">
+    <div class="card"><h3>Fast</h3><p>Clean HTML5 &amp; CSS Grid layout.</p></div>
+    <div class="card"><h3>Agentic</h3><p>Files created automatically in cloud storage.</p></div>
+    <div class="card"><h3>Editable</h3><p>Colab A100 connect karke kuch bhi customize karein.</p></div>
+  </section>
+  <script src="script.js"></script>
+</body>
+</html>""",
+                db_path=app.state.db_path,
+            )
+            db.save_generated_file(
+                "styles.css",
+                """* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, sans-serif; background: #0b0f19; color: #f1f5f9; }
+.nav { display: flex; justify-content: space-between; align-items: center; padding: 18px 40px; border-bottom: 1px solid #1e293b; }
+.logo { font-weight: 700; font-size: 18px; color: #a78bfa; }
+.cta { background: #7c5cff; color: #fff; text-decoration: none; padding: 8px 16px; border-radius: 8px; }
+.hero { text-align: center; padding: 80px 20px 50px; max-width: 720px; margin: 0 auto; }
+.hero h1 { font-size: 38px; margin-bottom: 14px; }
+.hero p { color: #94a3b8; margin-bottom: 24px; line-height: 1.6; }
+button { background: #7c5cff; color: #fff; border: none; padding: 12px 22px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; max-width: 900px; margin: 20px auto 60px; padding: 0 20px; }
+.card { background: #131a2a; border: 1px solid #1e293b; padding: 20px; border-radius: 12px; }
+.card h3 { margin-bottom: 8px; color: #c4b5fd; }
+.card p { font-size: 14px; color: #94a3b8; }""",
+                db_path=app.state.db_path,
+            )
+            db.save_generated_file(
+                "script.js",
+                """document.getElementById('demoBtn').addEventListener('click', () => {
+  document.getElementById('demoMsg').textContent = 'JavaScript is working live inside Cloud Preview!';
+});""",
+                db_path=app.state.db_path,
+            )
+            created_files = ["index.html", "styles.css", "script.js"]
+            final_answer = (
+                "Maine **Demo Agent Mode** mein aapke liye 3 files cloud storage mein bana di hain:\n"
+                "- `index.html`\n- `styles.css`\n- `script.js`\n\n"
+                "Right side par **Workspace Files & Live Preview** panel mein click karke website live dekh lein! "
+                "(Apne asli **Qwen3-32B** model se banwane ke liye Colab notebook run karke `/dashboard` mein URL paste karein.)"
+            )
+        else:
+            thinking = "Demo Mode: Colab GPU URL abhi set nahi hai."
+            final_answer = (
+                "Abhi aap **Demo Mode** mein hain kyunki Colab Tunnel URL set nahi hai.\n\n"
+                "1. Agent Mode test karne ke liye likhein: **\"Build a modern website for my AI agency\"**.\n"
+                "2. Asli **Qwen3-32B** chalane ke liye Colab mein `02_serve_qwen3_colab.ipynb` run karke URL `/dashboard` par paste karein."
+            )
         latency_ms = round((time.perf_counter() - start) * 1000, 1)
     else:
         try:
-            data = await _call_colab_model(
-                colab_url=colab_url,
-                prompt=req.prompt,
-                system_prompt=system_prompt,
-                history=req.history,
-                enable_thinking=req.enable_thinking,
-            )
-            raw_text = data.get("response", "")
-            thinking, final_answer = parse_thinking_response(raw_text)
-            if data.get("thinking"):
-                thinking = data["thinking"]
-            if data.get("final_response"):
-                final_answer = data["final_response"]
-            if data.get("model_version"):
-                active_version = data["model_version"]
+            current_prompt = req.prompt
+            current_history = list(req.history)
+            thinking_parts: List[str] = []
+            final_answer = ""
+
+            max_turns = 4 if req.agent_mode else 1
+            for _ in range(max_turns):
+                data = await _call_colab_model(
+                    colab_url=colab_url,
+                    prompt=current_prompt,
+                    system_prompt=system_prompt,
+                    history=current_history,
+                    enable_thinking=req.enable_thinking,
+                )
+                raw_text = data.get("response", "")
+                t_part, f_part = parse_thinking_response(raw_text)
+                if data.get("thinking"):
+                    t_part = data["thinking"]
+                if data.get("final_response"):
+                    f_part = data["final_response"]
+                if data.get("model_version"):
+                    active_version = data["model_version"]
+                if t_part:
+                    thinking_parts.append(t_part)
+
+                if not req.agent_mode:
+                    final_answer = f_part
+                    break
+
+                calls, cleaned_text = extract_tool_calls(f_part)
+                if not calls:
+                    final_answer = cleaned_text
+                    break
+
+                tool_outputs: List[str] = []
+                needs_followup = False
+                for call in calls:
+                    cname, cpath, ccontent = call["name"], call["path"], call["content"]
+                    if cname == "write_file" and cpath:
+                        db.save_generated_file(cpath, ccontent, db_path=app.state.db_path)
+                        if cpath not in created_files:
+                            created_files.append(cpath)
+                        tool_outputs.append(f"Saved `{cpath}` to cloud storage.")
+                    elif cname == "read_file" and cpath:
+                        fobj = db.get_generated_file(cpath, db_path=app.state.db_path)
+                        tool_outputs.append(
+                            f"Contents of `{cpath}`:\n{fobj['content']}" if fobj else f"File `{cpath}` not found."
+                        )
+                        needs_followup = True
+                    elif cname == "list_files":
+                        flist = [f["filename"] for f in db.get_generated_files(db_path=app.state.db_path)]
+                        tool_outputs.append(f"Workspace files: {flist}")
+                        needs_followup = True
+
+                if not needs_followup:
+                    final_answer = cleaned_text or f"Created files: {', '.join(created_files)}"
+                    break
+
+                current_history.append({"role": "user", "content": current_prompt})
+                current_history.append({"role": "assistant", "content": f_part})
+                current_prompt = "Tool results:\n" + "\n".join(tool_outputs) + "\nContinue and finish the task."
+                final_answer = cleaned_text
+
+            thinking = "\n\n".join(thinking_parts)
             latency_ms = round((time.perf_counter() - start) * 1000, 1)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Colab model error: {exc}")
@@ -183,6 +343,7 @@ async def chat_endpoint(req: ChatRequest):
         "model_version": active_version,
         "thinking": thinking,
         "final_response": final_answer,
+        "created_files": created_files,
         "latency_ms": latency_ms,
     }
 
@@ -335,3 +496,23 @@ def export_dataset():
         media_type="application/jsonl",
         headers={"Content-Disposition": "attachment; filename=training_feedback.jsonl"},
     )
+
+
+@app.get("/api/files")
+def list_workspace_files():
+    return {"files": db.get_generated_files(db_path=app.state.db_path)}
+
+
+@app.delete("/api/files")
+def reset_workspace_files():
+    db.clear_generated_files(db_path=app.state.db_path)
+    return {"status": "cleared"}
+
+
+@app.get("/api/preview/{filename:path}")
+def preview_workspace_file(filename: str):
+    fobj = db.get_generated_file(filename, db_path=app.state.db_path)
+    if not fobj:
+        raise HTTPException(status_code=404, detail=f"File '{filename}' not found in cloud workspace.")
+    mime_type, _ = mimetypes.guess_type(filename)
+    return Response(content=fobj["content"], media_type=mime_type or "text/plain; charset=utf-8")

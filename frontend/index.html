@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>My Custom Qwen3 AI — Chat</title>
+  <title>My Custom Qwen3 AI — Agent &amp; Chat</title>
   <style>
     :root {
       --bg: #0f1117;
@@ -26,173 +26,111 @@
       height: 100vh;
     }
     header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 24px;
-      background: var(--panel);
-      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
     }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+    .brand { display: flex; align-items: center; gap: 10px; }
     .brand h1 { font-size: 16px; font-weight: 600; }
     .badge {
-      font-size: 12px;
-      padding: 4px 10px;
-      border-radius: 999px;
-      background: var(--accent-soft);
-      color: #c4b5fd;
-      border: 1px solid rgba(124,92,255,0.35);
+      font-size: 12px; padding: 3px 10px; border-radius: 999px;
+      background: var(--accent-soft); color: #c4b5fd; border: 1px solid rgba(124,92,255,0.35);
     }
-    .status-dot {
-      width: 9px; height: 9px; border-radius: 50%;
-      background: var(--muted);
-      display: inline-block;
-    }
+    .status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
     .status-dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); }
     .nav-actions { display: flex; align-items: center; gap: 14px; }
     .btn-link {
-      color: var(--text);
-      text-decoration: none;
-      font-size: 13px;
-      padding: 7px 14px;
-      border-radius: 8px;
-      background: #222634;
-      border: 1px solid var(--border);
+      color: var(--text); text-decoration: none; font-size: 13px;
+      padding: 6px 12px; border-radius: 8px; background: #222634; border: 1px solid var(--border);
     }
-    .btn-link:hover { border-color: var(--accent); }
-    main {
-      flex: 1;
-      overflow-y: auto;
-      padding: 24px;
-      max-width: 900px;
-      width: 100%;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
+    .toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+
+    /* Split Workspace Layout */
+    .workspace-layout {
+      flex: 1; display: grid; grid-template-columns: 1.15fr 0.85fr; overflow: hidden;
     }
-    .msg {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      max-width: 85%;
+    @media (max-width: 960px) {
+      .workspace-layout { grid-template-columns: 1fr; grid-template-rows: 1fr 340px; }
     }
+    .chat-pane { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
+    main#chatBox {
+      flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px;
+    }
+    .msg { display: flex; flex-direction: column; gap: 6px; max-width: 92%; }
     .msg.user { align-self: flex-end; }
     .msg.ai { align-self: flex-start; width: 100%; max-width: 100%; }
     .bubble {
-      padding: 14px 18px;
-      border-radius: 14px;
-      line-height: 1.6;
-      font-size: 14.5px;
-      white-space: pre-wrap;
-      word-break: break-word;
+      padding: 13px 16px; border-radius: 14px; line-height: 1.55; font-size: 14px;
+      white-space: pre-wrap; word-break: break-word;
     }
-    .msg.user .bubble {
-      background: var(--accent);
-      color: #fff;
-      border-bottom-right-radius: 4px;
-    }
-    .msg.ai .bubble {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-bottom-left-radius: 4px;
-    }
+    .msg.user .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+    .msg.ai .bubble { background: var(--panel); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
     details.thinking {
-      background: #12151e;
-      border: 1px dashed #32384a;
-      border-radius: 10px;
-      padding: 10px 14px;
-      margin-bottom: 10px;
-      font-size: 13px;
-      color: var(--muted);
+      background: #12151e; border: 1px dashed #32384a; border-radius: 8px;
+      padding: 8px 12px; margin-bottom: 8px; font-size: 12.5px; color: var(--muted);
     }
-    details.thinking summary {
-      cursor: pointer;
-      font-weight: 500;
-      color: #b8c0d4;
-      user-select: none;
-    }
-    details.thinking pre {
-      margin-top: 8px;
-      white-space: pre-wrap;
-      font-family: inherit;
-      line-height: 1.5;
-    }
-    .msg-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--muted);
-    }
+    details.thinking summary { cursor: pointer; font-weight: 500; color: #b8c0d4; }
+    details.thinking pre { margin-top: 6px; white-space: pre-wrap; font-family: inherit; }
+    .msg-actions { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
     .act-btn {
-      background: #1d212d;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      padding: 4px 10px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 12px;
+      background: #1d212d; border: 1px solid var(--border); color: var(--muted);
+      padding: 4px 9px; border-radius: 6px; cursor: pointer; font-size: 12px;
     }
     .act-btn:hover { color: var(--text); border-color: #3f475e; }
     .act-btn.active-good { color: var(--green); border-color: var(--green); }
     .act-btn.active-bad { color: var(--red); border-color: var(--red); }
-    footer {
-      background: var(--panel);
-      border-top: 1px solid var(--border);
-      padding: 14px 24px;
-    }
-    .composer {
-      max-width: 900px;
-      margin: 0 auto;
-      display: flex;
-      gap: 10px;
-      align-items: flex-end;
-    }
+
+    .composer-wrap { background: var(--panel); border-top: 1px solid var(--border); padding: 12px 16px; }
+    .composer { display: flex; gap: 10px; align-items: flex-end; }
     textarea {
-      flex: 1;
-      background: var(--bg);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px 14px;
-      font-family: inherit;
-      font-size: 14.5px;
-      resize: none;
-      min-height: 48px;
-      max-height: 160px;
-      outline: none;
+      flex: 1; background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 12px; font-family: inherit; font-size: 14px;
+      resize: none; min-height: 44px; max-height: 140px; outline: none;
     }
     textarea:focus { border-color: var(--accent); }
     .send-btn {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 12px;
-      padding: 12px 20px;
-      font-weight: 600;
-      cursor: pointer;
-      height: 48px;
+      background: var(--accent); color: #fff; border: none; border-radius: 10px;
+      padding: 10px 18px; font-weight: 600; cursor: pointer; height: 44px;
     }
     .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .toggle {
-      display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted);
+
+    /* Right Side Cloud Files & Live Preview */
+    .files-pane { display: flex; flex-direction: column; background: #12151d; overflow: hidden; }
+    .files-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--border);
+      font-size: 13px; font-weight: 600;
     }
+    .tabs { display: flex; gap: 6px; }
+    .tab-btn {
+      background: #222634; color: var(--muted); border: 1px solid var(--border);
+      padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
+    }
+    .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .file-pills {
+      display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border);
+      overflow-x: auto; flex-wrap: wrap;
+    }
+    .file-pill {
+      background: #1b202d; border: 1px solid var(--border); color: var(--text);
+      padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
+    }
+    .file-pill.active { border-color: var(--accent); color: #c4b5fd; }
+    .preview-area { flex: 1; overflow: auto; position: relative; }
+    #codeViewer {
+      padding: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; color: #cbd5e1;
+    }
+    #liveFrame { width: 100%; height: 100%; border: none; background: #fff; display: none; }
+
     /* Modal */
     .modal-backdrop {
       position: fixed; inset: 0; background: rgba(0,0,0,0.65);
-      display: none; align-items: center; justify-content: center; padding: 20px;
+      display: none; align-items: center; justify-content: center; padding: 20px; z-index: 50;
     }
     .modal {
       background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
       padding: 20px; max-width: 600px; width: 100%; display: flex; flex-direction: column; gap: 12px;
     }
-    .modal h3 { font-size: 16px; }
-    .modal p { font-size: 13px; color: var(--muted); }
     .modal textarea { min-height: 140px; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
   </style>
@@ -205,31 +143,52 @@
       <span id="versionBadge" class="badge">v1.0-base</span>
     </div>
     <div class="nav-actions">
-      <label class="toggle">
-        <input type="checkbox" id="thinkingToggle" checked />
-        Thinking Mode
-      </label>
-      <a href="/dashboard" class="btn-link">Middle Dashboard &amp; Eval</a>
+      <label class="toggle"><input type="checkbox" id="agentToggle" checked /> Agent Mode (Create Files)</label>
+      <label class="toggle"><input type="checkbox" id="thinkingToggle" checked /> Thinking</label>
+      <a href="/dashboard" class="btn-link">Middle Dashboard</a>
     </div>
   </header>
 
-  <main id="chatBox">
-    <div class="msg ai">
-      <div class="bubble">Assalam-o-Alaikum! Main aapka custom **Qwen3 AI** hoon. Mujhse koi bhi coding, reasoning, ya general sawal poochein. Agar mera jawab kamzor lage, toh neeche **✏️ Improve Answer** daba kar mujhe behtar jawab sikha sakte hain!</div>
+  <div class="workspace-layout">
+    <!-- Left: Chat -->
+    <div class="chat-pane">
+      <main id="chatBox">
+        <div class="msg ai">
+          <div class="bubble">Assalam-o-Alaikum! **Agent Mode ON hai.** Jab aap website ya code banane ka bolenge, toh main khud **Cloud Workspace** mein files (`index.html`, `styles.css`, `script.js`) banaunga aur aap right side par unka **Code &amp; Live Website Preview** dekh sakenge!</div>
+        </div>
+      </main>
+      <div class="composer-wrap">
+        <div class="composer">
+          <textarea id="promptInput" placeholder="Example: Build a modern portfolio website... (Enter to send)"></textarea>
+          <button id="sendBtn" class="send-btn">Send</button>
+        </div>
+      </div>
     </div>
-  </main>
 
-  <footer>
-    <div class="composer">
-      <textarea id="promptInput" placeholder="Apna sawal likhein... (Enter to send, Shift+Enter for new line)"></textarea>
-      <button id="sendBtn" class="send-btn">Send</button>
+    <!-- Right: Cloud Workspace Files & Live Preview -->
+    <div class="files-pane">
+      <div class="files-header">
+        <span>Cloud Workspace Files</span>
+        <div class="tabs">
+          <button id="tabCode" class="tab-btn active" onclick="switchTab('code')">Code</button>
+          <button id="tabPreview" class="tab-btn" onclick="switchTab('preview')">Live Preview</button>
+          <button class="tab-btn" onclick="clearFiles()" title="Clear workspace">Clear</button>
+        </div>
+      </div>
+      <div id="filePills" class="file-pills">
+        <span style="font-size:12px; color:var(--muted);">Abhi koi file nahi bani.</span>
+      </div>
+      <div class="preview-area">
+        <pre id="codeViewer">// Yahan AI ki banayi hui files ka code dikhega.</pre>
+        <iframe id="liveFrame"></iframe>
+      </div>
     </div>
-  </footer>
+  </div>
 
   <div id="correctModal" class="modal-backdrop">
     <div class="modal">
       <h3>Improve AI Answer (Training Feedback)</h3>
-      <p>Yahan sahi ya behtar jawab likhein. Yeh automatically aapke next fine-tuning dataset (`.jsonl`) mein save ho jayega.</p>
+      <p style="font-size:13px; color:var(--muted);">Sahi jawab likhein — yeh next fine-tuning dataset (`.jsonl`) mein save hoga.</p>
       <textarea id="correctedText" placeholder="Ideal answer yahan likhein..."></textarea>
       <div class="modal-actions">
         <button class="act-btn" onclick="closeModal()">Cancel</button>
@@ -243,18 +202,19 @@
     const promptInput = document.getElementById('promptInput');
     const sendBtn = document.getElementById('sendBtn');
     const thinkingToggle = document.getElementById('thinkingToggle');
+    const agentToggle = document.getElementById('agentToggle');
     const statusDot = document.getElementById('statusDot');
     const versionBadge = document.getElementById('versionBadge');
 
     let history = [];
     let currentCorrectId = null;
+    let workspaceFiles = [];
+    let selectedFile = null;
+    let currentTab = 'code';
 
     async function refreshStatus() {
       try {
-        const [healthRes, settingsRes] = await Promise.all([
-          fetch('/api/health'),
-          fetch('/api/settings')
-        ]);
+        const [healthRes, settingsRes] = await Promise.all([fetch('/api/health'), fetch('/api/settings')]);
         const health = await healthRes.json();
         const settings = await settingsRes.json();
         versionBadge.textContent = settings.active_version || 'v1.0-base';
@@ -266,6 +226,67 @@
           statusDot.title = health.message || 'Demo Mode';
         }
       } catch (e) {}
+    }
+
+    async function refreshFiles(autoPreviewIfHtml = false) {
+      try {
+        const res = await fetch('/api/files');
+        const data = await res.json();
+        workspaceFiles = data.files || [];
+        const pills = document.getElementById('filePills');
+        pills.innerHTML = '';
+
+        if (!workspaceFiles.length) {
+          pills.innerHTML = '<span style="font-size:12px; color:var(--muted);">Abhi koi file nahi bani.</span>';
+          document.getElementById('codeViewer').textContent = '// Yahan AI ki banayi hui files ka code dikhega.';
+          return;
+        }
+
+        if (!selectedFile || !workspaceFiles.find(f => f.filename === selectedFile)) {
+          selectedFile = workspaceFiles[0].filename;
+        }
+
+        workspaceFiles.forEach(f => {
+          const btn = document.createElement('button');
+          btn.className = 'file-pill' + (f.filename === selectedFile ? ' active' : '');
+          btn.textContent = f.filename;
+          btn.onclick = () => { selectedFile = f.filename; renderFileContent(); refreshFiles(false); };
+          pills.appendChild(btn);
+        });
+
+        renderFileContent();
+        if (autoPreviewIfHtml && workspaceFiles.some(f => f.filename === 'index.html')) {
+          switchTab('preview');
+        }
+      } catch (e) {}
+    }
+
+    function renderFileContent() {
+      const fobj = workspaceFiles.find(f => f.filename === selectedFile);
+      document.getElementById('codeViewer').textContent = fobj ? fobj.content : '';
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.getElementById('tabCode').classList.toggle('active', tab === 'code');
+      document.getElementById('tabPreview').classList.toggle('active', tab === 'preview');
+      const codeEl = document.getElementById('codeViewer');
+      const frameEl = document.getElementById('liveFrame');
+      if (tab === 'preview') {
+        codeEl.style.display = 'none';
+        frameEl.style.display = 'block';
+        frameEl.src = '/api/preview/index.html?t=' + Date.now();
+      } else {
+        frameEl.style.display = 'none';
+        codeEl.style.display = 'block';
+      }
+    }
+
+    async function clearFiles() {
+      await fetch('/api/files', { method: 'DELETE' });
+      selectedFile = null;
+      switchTab('code');
+      refreshFiles(false);
     }
 
     function appendUserMsg(text) {
@@ -280,30 +301,24 @@
     function appendAiMsg(data) {
       const div = document.createElement('div');
       div.className = 'msg ai';
-
-      let thinkingHtml = '';
-      if (data.thinking) {
-        thinkingHtml = `
-          <details class="thinking">
-            <summary>🧠 Thinking Process (click to inspect reasoning)</summary>
-            <pre></pre>
-          </details>
-        `;
-      }
+      let thinkingHtml = data.thinking
+        ? `<details class="thinking"><summary>🧠 Thinking Process</summary><pre></pre></details>`
+        : '';
+      let filesBadge = (data.created_files && data.created_files.length)
+        ? `<span class="badge">📁 Created: ${data.created_files.join(', ')}</span>`
+        : '';
 
       div.innerHTML = `
         <div class="bubble">${thinkingHtml}<div class="final-text"></div></div>
         <div class="msg-actions">
           <span>${data.model_version} · ${data.latency_ms} ms</span>
+          ${filesBadge}
           <button class="act-btn" onclick="rateMsg(${data.interaction_id}, 1, this)">👍 Good</button>
           <button class="act-btn" onclick="rateMsg(${data.interaction_id}, -1, this)">👎 Weak</button>
           <button class="act-btn" onclick="openCorrect(${data.interaction_id})">✏️ Improve Answer</button>
         </div>
       `;
-
-      if (data.thinking) {
-        div.querySelector('details.thinking pre').textContent = data.thinking;
-      }
+      if (data.thinking) div.querySelector('details.thinking pre').textContent = data.thinking;
       div.querySelector('.final-text').textContent = data.final_response;
       chatBox.appendChild(div);
       chatBox.scrollTop = chatBox.scrollHeight;
@@ -323,7 +338,8 @@
           body: JSON.stringify({
             prompt,
             history: history.slice(-6),
-            enable_thinking: thinkingToggle.checked
+            enable_thinking: thinkingToggle.checked,
+            agent_mode: agentToggle.checked
           })
         });
         const data = await res.json();
@@ -332,13 +348,13 @@
         appendAiMsg(data);
         history.push({ role: 'user', content: prompt });
         history.push({ role: 'assistant', content: data.final_response });
+        if (data.created_files && data.created_files.length) {
+          await refreshFiles(true);
+        }
       } catch (err) {
         appendAiMsg({
-          interaction_id: 0,
-          model_version: 'error',
-          thinking: '',
-          final_response: 'Error: ' + err.message,
-          latency_ms: 0
+          interaction_id: 0, model_version: 'error', thinking: '',
+          final_response: 'Error: ' + err.message, created_files: [], latency_ms: 0
         });
       } finally {
         sendBtn.disabled = false;
@@ -349,8 +365,7 @@
     async function rateMsg(id, score, btn) {
       if (!id) return;
       await fetch('/api/feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ interaction_id: id, feedback: score })
       });
       const parent = btn.parentElement;
@@ -363,20 +378,13 @@
       document.getElementById('correctedText').value = '';
       document.getElementById('correctModal').style.display = 'flex';
     }
-    function closeModal() {
-      document.getElementById('correctModal').style.display = 'none';
-    }
+    function closeModal() { document.getElementById('correctModal').style.display = 'none'; }
     async function saveCorrection() {
       const text = document.getElementById('correctedText').value.trim();
       if (!text || !currentCorrectId) return;
       await fetch('/api/feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          interaction_id: currentCorrectId,
-          feedback: -1,
-          corrected_response: text
-        })
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interaction_id: currentCorrectId, feedback: -1, corrected_response: text })
       });
       closeModal();
       alert('Correction saved! Dashboard se .jsonl export karke next training mein use karein.');
@@ -384,13 +392,11 @@
 
     sendBtn.addEventListener('click', sendMessage);
     promptInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-      }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
 
     refreshStatus();
+    refreshFiles(false);
   </script>
 </body>
 </html>

@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from middleware import db
-from middleware.app import app, parse_thinking_response
+from middleware.app import app, parse_thinking_response, extract_tool_calls
 
 
 @pytest.fixture
@@ -105,3 +105,28 @@ def test_vercel_entrypoint_imports():
     from api.index import app as vercel_app
     assert vercel_app is app
 
+
+
+def test_agent_mode_demo_and_colab_tool_calls(client: TestClient):
+    raw = '<tool_call name="write_file" path="hello.html"><h1>Hi</h1></tool_call>\nDone!'
+    calls, cleaned = extract_tool_calls(raw)
+    assert len(calls) == 1
+    assert calls[0]["name"] == "write_file"
+    assert calls[0]["path"] == "hello.html"
+    assert cleaned == "Done!"
+
+    # Demo Agent Mode website build
+    res = client.post("/api/chat", json={"prompt": "Build a modern website", "agent_mode": True})
+    assert res.status_code == 200
+    data = res.json()
+    assert "index.html" in data["created_files"]
+
+    files_res = client.get("/api/files")
+    assert files_res.status_code == 200
+    filenames = [f["filename"] for f in files_res.json()["files"]]
+    assert "index.html" in filenames and "styles.css" in filenames
+
+    prev = client.get("/api/preview/index.html")
+    assert prev.status_code == 200
+    assert "text/html" in prev.headers["content-type"]
+    assert "Built by Your Custom AI Agent" in prev.text

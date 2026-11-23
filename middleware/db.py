@@ -80,6 +80,17 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
         )
     """)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS generated_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL DEFAULT 'default',
+            filename TEXT NOT NULL,
+            content TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(session_id, filename)
+        )
+    """)
+
     # Seed default settings if missing
     cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('colab_url', '')")
     cur.execute(
@@ -312,3 +323,63 @@ def export_training_jsonl(db_path: Path = DEFAULT_DB_PATH) -> str:
         }
         lines.append(json.dumps(record, ensure_ascii=False))
     return "\n".join(lines)
+
+
+def save_generated_file(
+    filename: str,
+    content: str,
+    session_id: str = "default",
+    db_path: Path = DEFAULT_DB_PATH,
+) -> None:
+    clean_name = filename.lstrip("/").replace("..", "")
+    conn = get_connection(db_path)
+    conn.execute(
+        """
+        INSERT INTO generated_files (session_id, filename, content, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(session_id, filename) DO UPDATE SET
+            content=excluded.content,
+            updated_at=excluded.updated_at
+        """,
+        (session_id, clean_name, content, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_generated_files(
+    session_id: str = "default",
+    db_path: Path = DEFAULT_DB_PATH,
+) -> List[Dict[str, Any]]:
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        "SELECT filename, content, updated_at FROM generated_files WHERE session_id = ? ORDER BY filename ASC",
+        (session_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_generated_file(
+    filename: str,
+    session_id: str = "default",
+    db_path: Path = DEFAULT_DB_PATH,
+) -> Optional[Dict[str, Any]]:
+    clean_name = filename.lstrip("/").replace("..", "")
+    conn = get_connection(db_path)
+    row = conn.execute(
+        "SELECT filename, content, updated_at FROM generated_files WHERE session_id = ? AND filename = ?",
+        (session_id, clean_name),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def clear_generated_files(
+    session_id: str = "default",
+    db_path: Path = DEFAULT_DB_PATH,
+) -> None:
+    conn = get_connection(db_path)
+    conn.execute("DELETE FROM generated_files WHERE session_id = ?", (session_id,))
+    conn.commit()
+    conn.close()
