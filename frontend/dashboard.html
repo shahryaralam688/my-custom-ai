@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Middle Layer — Observability &amp; Before/After Dashboard</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --panel: #171a23;
+      --border: #262b38;
+      --text: #e6e8ef;
+      --muted: #9aa3b2;
+      --accent: #7c5cff;
+      --green: #22c55e;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Inter, system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding-bottom: 60px;
+    }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 16px; }
+    .btn-link {
+      color: var(--text); text-decoration: none; font-size: 13px;
+      padding: 7px 14px; border-radius: 8px; background: #222634; border: 1px solid var(--border);
+    }
+    .container { max-width: 1120px; margin: 24px auto; padding: 0 20px; display: flex; flex-direction: column; gap: 22px; }
+    .card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px;
+    }
+    .card h2 { font-size: 15px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; }
+    .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+    .stat-box { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+    .stat-val { font-size: 24px; font-weight: 700; margin-top: 4px; }
+    .stat-lbl { font-size: 12px; color: var(--muted); }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    input, textarea, select {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 9px 12px; font-family: inherit; font-size: 13.5px;
+    }
+    input.wide { flex: 1; min-width: 260px; }
+    textarea.wide { width: 100%; min-height: 70px; }
+    button {
+      background: var(--accent); color: #fff; border: none; border-radius: 8px;
+      padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    button.secondary { background: #222634; border: 1px solid var(--border); }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+    @media (max-width: 768px) { .compare-grid { grid-template-columns: 1fr; } }
+    .compare-col {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+      font-size: 13px; line-height: 1.5; white-space: pre-wrap;
+    }
+    .think-box {
+      background: #12151e; border-left: 3px solid var(--accent); padding: 8px 10px;
+      margin-bottom: 8px; font-size: 12.5px; color: var(--muted);
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-weight: 500; }
+    .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #232838; }
+    .pill.good { color: var(--green); }
+    .pill.bad { color: var(--red); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Middle Layer — Model Observability, Before/After &amp; Improvement Hub</h1>
+    <a href="/" class="btn-link">← Back to Chat UI</a>
+  </header>
+
+  <div class="container">
+    <!-- Stats -->
+    <div class="grid-4">
+      <div class="stat-box"><div class="stat-lbl">Total Chats</div><div id="stTotal" class="stat-val">0</div></div>
+      <div class="stat-box"><div class="stat-lbl">👍 Good Answers</div><div id="stPos" class="stat-val" style="color:var(--green)">0</div></div>
+      <div class="stat-box"><div class="stat-lbl">✏️ Corrected for Training</div><div id="stCorr" class="stat-val" style="color:#c4b5fd">0</div></div>
+      <div class="stat-box"><div class="stat-lbl">Avg Latency</div><div id="stLat" class="stat-val">0 ms</div></div>
+    </div>
+
+    <!-- Connection & Settings -->
+    <div class="card">
+      <h2>1. Cloud Model Connection (Colab A100 Tunnel)</h2>
+      <div class="row">
+        <input id="colabUrl" class="wide" placeholder="https://xxxx.trycloudflare.com (from 02_serve_qwen3_colab.ipynb)" />
+        <input id="activeVersion" style="width:160px" placeholder="v1.0-base" />
+        <button onclick="saveSettings()">Save &amp; Test</button>
+        <span id="healthStatus" style="font-size:13px; color:var(--muted);"></span>
+      </div>
+      <div style="margin-top:8px;">
+        <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:6px;">System Prompt (Controls Sonnet-style tone &amp; structure)</label>
+        <textarea id="systemPrompt" class="wide"></textarea>
+      </div>
+    </div>
+
+    <!-- Before vs After Reasoning Comparator -->
+    <div class="card">
+      <h2>
+        <span>2. Before vs After Reasoning Comparator (Seekhne &amp; Check Karne ke liye)</span>
+        <button onclick="runEvalSnapshot()">Run Eval Snapshot on Active Model</button>
+      </h2>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:12px;">
+        Training se pehle (<code>v1.0-base</code>) aur training ke baad (<code>v1.1-qlora</code>) fixed sawalon par model ki <strong>Reasoning (&lt;think&gt;)</strong> aur <strong>Final Answer</strong> side-by-side compare karein.
+      </p>
+      <div class="row">
+        <label style="font-size:13px;">Before:</label>
+        <select id="v1Select" onchange="loadCompare()"></select>
+        <label style="font-size:13px;">After:</label>
+        <select id="v2Select" onchange="loadCompare()"></select>
+      </div>
+      <div id="compareContainer"></div>
+    </div>
+
+    <!-- Model Versions & Export -->
+    <div class="card">
+      <h2>
+        <span>3. Model Versions &amp; Improvement Dataset</span>
+        <button onclick="window.location='/api/export-dataset'">Download Corrections (.jsonl) for Training</button>
+      </h2>
+      <div class="row">
+        <input id="newVer" placeholder="v1.1-qlora" style="width:140px;" />
+        <input id="newLoss" placeholder="Train Loss (e.g. 0.42)" style="width:160px;" />
+        <input id="newNotes" class="wide" placeholder="What changed? (e.g. Trained on 5000 reasoning + 40 corrections)" />
+        <button class="secondary" onclick="registerVersion()">Log Version</button>
+      </div>
+      <table>
+        <thead><tr><th>Version</th><th>Base Model</th><th>Train Loss</th><th>What Changed</th><th>Date</th></tr></thead>
+        <tbody id="versionsBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Interaction Logs -->
+    <div class="card">
+      <h2>4. Live Interaction Logs</h2>
+      <table>
+        <thead><tr><th>Version</th><th>Prompt</th><th>Response &amp; Thinking</th><th>Feedback</th><th>Latency</th></tr></thead>
+        <tbody id="logsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    async function loadAll() {
+      const [settingsRes, healthRes, logsRes, versionsRes, compareRes] = await Promise.all([
+        fetch('/api/settings'),
+        fetch('/api/health'),
+        fetch('/api/logs?limit=25'),
+        fetch('/api/versions'),
+        fetch('/api/eval-compare')
+      ]);
+
+      const settings = await settingsRes.json();
+      document.getElementById('colabUrl').value = settings.colab_url || '';
+      document.getElementById('systemPrompt').value = settings.system_prompt || '';
+      document.getElementById('activeVersion').value = settings.active_version || 'v1.0-base';
+
+      const health = await healthRes.json();
+      document.getElementById('healthStatus').textContent = health.colab_connected
+        ? '✅ Connected to Colab GPU'
+        : '⚪ ' + (health.message || 'Not connected');
+
+      const logsData = await logsRes.json();
+      document.getElementById('stTotal').textContent = logsData.stats.total;
+      document.getElementById('stPos').textContent = logsData.stats.positive;
+      document.getElementById('stCorr').textContent = logsData.stats.corrected;
+      document.getElementById('stLat').textContent = logsData.stats.avg_latency_ms + ' ms';
+
+      const logsBody = document.getElementById('logsBody');
+      logsBody.innerHTML = '';
+      logsData.logs.forEach(l => {
+        const fb = l.corrected_response ? '<span class="pill">✏️ Corrected</span>' :
+                   l.feedback === 1 ? '<span class="pill good">👍 Good</span>' :
+                   l.feedback === -1 ? '<span class="pill bad">👎 Weak</span>' : '<span class="pill">Unrated</span>';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><span class="pill">${l.model_version}</span></td>
+          <td style="max-width:240px;"></td>
+          <td style="max-width:420px;"></td>
+          <td>${fb}</td>
+          <td>${l.latency_ms} ms</td>
+        `;
+        tr.children[1].textContent = l.prompt;
+        tr.children[2].textContent = (l.thinking_trace ? '[Thinking] ' + l.thinking_trace.slice(0, 120) + '...\n' : '') + l.final_response.slice(0, 220);
+        logsBody.appendChild(tr);
+      });
+
+      const verData = await versionsRes.json();
+      const vBody = document.getElementById('versionsBody');
+      vBody.innerHTML = '';
+      verData.versions.forEach(v => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><span class="pill">${v.version}</span></td><td>${v.base_model}</td><td>${v.train_loss ?? '-'}</td><td>${v.dataset_notes}</td><td>${v.created_at.slice(0,10)}</td>`;
+        vBody.appendChild(tr);
+      });
+
+      const compData = await compareRes.json();
+      const v1Sel = document.getElementById('v1Select');
+      const v2Sel = document.getElementById('v2Select');
+      v1Sel.innerHTML = ''; v2Sel.innerHTML = '';
+      compData.available_versions.forEach(v => {
+        v1Sel.add(new Option(v, v, false, v === compData.v1));
+        v2Sel.add(new Option(v, v, false, v === compData.v2));
+      });
+      renderCompare(compData);
+    }
+
+    function renderCompare(compData) {
+      const container = document.getElementById('compareContainer');
+      if (!compData.comparisons.length) {
+        container.innerHTML = '<p style="font-size:13px; color:var(--muted);">Abhi koi Eval Snapshot nahi hai. Colab connect karke "Run Eval Snapshot" dabayein.</p>';
+        return;
+      }
+      container.innerHTML = '';
+      compData.comparisons.forEach(c => {
+        const box = document.createElement('div');
+        box.style.marginBottom = '18px';
+        box.innerHTML = `<div style="font-weight:600; font-size:13.5px; margin-bottom:6px;">Prompt: ${c.prompt}</div>`;
+        const grid = document.createElement('div');
+        grid.className = 'compare-grid';
+        [c.v1, c.v2].forEach((item, i) => {
+          const col = document.createElement('div');
+          col.className = 'compare-col';
+          if (!item) {
+            col.textContent = 'No snapshot for this version.';
+          } else {
+            col.innerHTML = `<div style="font-weight:600; margin-bottom:6px;">${item.version} (${item.latency_ms} ms)</div>` +
+              (item.thinking_trace ? `<div class="think-box"><b>Reasoning:</b>\n${item.thinking_trace}</div>` : '') +
+              `<div>${item.final_response}</div>`;
+          }
+          grid.appendChild(col);
+        });
+        box.appendChild(grid);
+        container.appendChild(box);
+      });
+    }
+
+    async function loadCompare() {
+      const v1 = document.getElementById('v1Select').value;
+      const v2 = document.getElementById('v2Select').value;
+      const res = await fetch(`/api/eval-compare?v1=${encodeURIComponent(v1)}&v2=${encodeURIComponent(v2)}`);
+      renderCompare(await res.json());
+    }
+
+    async function saveSettings() {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          colab_url: document.getElementById('colabUrl').value,
+          system_prompt: document.getElementById('systemPrompt').value,
+          active_version: document.getElementById('activeVersion').value
+        })
+      });
+      loadAll();
+    }
+
+    async function runEvalSnapshot() {
+      const btn = event.target;
+      btn.disabled = true; btn.textContent = 'Running Eval...';
+      try {
+        const res = await fetch('/api/run-eval', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        const data = await res.json();
+        if (!res.ok) alert(data.detail);
+        else loadAll();
+      } finally {
+        btn.disabled = false; btn.textContent = 'Run Eval Snapshot on Active Model';
+      }
+    }
+
+    async function registerVersion() {
+      const version = document.getElementById('newVer').value.trim();
+      if (!version) return;
+      const lossVal = parseFloat(document.getElementById('newLoss').value);
+      await fetch('/api/versions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          version,
+          train_loss: isNaN(lossVal) ? null : lossVal,
+          dataset_notes: document.getElementById('newNotes').value
+        })
+      });
+      loadAll();
+    }
+
+    loadAll();
+  </script>
+</body>
+</html>
