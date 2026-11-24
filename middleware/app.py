@@ -372,7 +372,9 @@ def list_logs(limit: int = 50):
 
 @app.get("/api/settings")
 def read_settings():
-    return db.get_settings(app.state.db_path)
+    s = db.get_settings(app.state.db_path)
+    s["agent_instructions"] = AGENT_INSTRUCTIONS
+    return s
 
 
 @app.post("/api/settings")
@@ -517,3 +519,25 @@ def preview_workspace_file(filename: str):
         raise HTTPException(status_code=404, detail=f"File '{filename}' not found in cloud workspace.")
     mime_type, _ = mimetypes.guess_type(filename)
     return Response(content=fobj["content"], media_type=mime_type or "text/plain; charset=utf-8")
+
+
+class LogInteractionRequest(BaseModel):
+    prompt: str
+    thinking: str = ""
+    final_response: str
+    model_version: str = "v1.0-base"
+    latency_ms: float = 0.0
+
+
+@app.post("/api/log-interaction")
+def log_client_interaction(req: LogInteractionRequest):
+    db.init_db(app.state.db_path)
+    interaction_id = db.log_interaction(
+        prompt=req.prompt,
+        thinking_trace=req.thinking,
+        final_response=req.final_response,
+        model_version=req.model_version,
+        latency_ms=req.latency_ms,
+        db_path=app.state.db_path,
+    )
+    return {"interaction_id": interaction_id}

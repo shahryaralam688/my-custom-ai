@@ -212,19 +212,37 @@
     let selectedFile = null;
     let currentTab = 'code';
 
+    let activeColabUrl = localStorage.getItem('custom_ai_colab_url') || '';
+    let activeSystemPrompt = localStorage.getItem('custom_ai_system_prompt') || 'You are a helpful, accurate AI assistant.';
+    let activeVersion = localStorage.getItem('custom_ai_active_version') || 'v1.0-base';
+    let agentInstructions = '';
+
     async function refreshStatus() {
       try {
-        const [healthRes, settingsRes] = await Promise.all([fetch('/api/health'), fetch('/api/settings')]);
-        const health = await healthRes.json();
+        const settingsRes = await fetch('/api/settings');
         const settings = await settingsRes.json();
-        versionBadge.textContent = settings.active_version || 'v1.0-base';
-        if (health.colab_connected) {
-          statusDot.classList.add('online');
-          statusDot.title = 'Connected to Colab GPU';
-        } else {
-          statusDot.classList.remove('online');
-          statusDot.title = health.message || 'Demo Mode';
+        if (settings.colab_url) {
+          activeColabUrl = settings.colab_url;
+          localStorage.setItem('custom_ai_colab_url', activeColabUrl);
         }
+        if (settings.system_prompt) activeSystemPrompt = settings.system_prompt;
+        if (settings.active_version) activeVersion = settings.active_version;
+        if (settings.agent_instructions) agentInstructions = settings.agent_instructions;
+
+        versionBadge.textContent = activeVersion;
+
+        if (activeColabUrl) {
+          try {
+            const hRes = await fetch(activeColabUrl.replace(/\/$/, '') + '/health');
+            if (hRes.ok) {
+              statusDot.classList.add('online');
+              statusDot.title = 'Connected to Colab GPU (Direct Stream)';
+              return;
+            }
+          } catch (e) {}
+        }
+        statusDot.classList.remove('online');
+        statusDot.title = 'Demo Mode (Set Colab URL in /dashboard)';
       } catch (e) {}
     }
 
@@ -354,6 +372,26 @@
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
+    function parseStreamedText(raw) {
+      let thinking = '';
+      let rest = raw;
+      const tMatch = raw.match(/<think>([\s\S]*?)<\/think>([\s\S]*)/);
+      if (tMatch) {
+        thinking = tMatch[1].trim();
+        rest = tMatch[2].trim();
+      }
+      const files = [];
+      const tcRegex = /<tool_call\s+name="([^"]+)"(?:\s+path="([^"]*)")?\s*>([\s\S]*?)<\/tool_call>/g;
+      let m;
+      while ((m = tcRegex.exec(rest)) !== null) {
+        if (m[1].trim() === 'write_file' && m[2]) {
+          files.push({ filename: m[2].trim(), content: m[3].trim() });
+        }
+      }
+      const cleaned = rest.replace(tcRegex, '').trim();
+      return { thinking, finalResponse: cleaned || (files.length ? 'Created: ' + files.map(f => f.filename).join(', ') : rest), files };
+    }
+
     async function sendMessage() {
       const prompt = promptInput.value.trim();
       if (!prompt) return;
@@ -361,25 +399,105 @@
       sendBtn.disabled = true;
       appendUserMsg(prompt);
 
+      const startTime = performance.now();
+
       try {
-        const res = await fetch('/api/chat', {
+        if (!activeColabUrl) {
+          // Demo Mode via Vercel /api/chat
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt,
+              history: history.slice(-6),
+              enable_thinking: thinkingToggle.checked,
+              agent_mode: agentToggle.checked
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || 'Request failed');
+          appendAiMsg(data);
+          history.push({ role: 'user', content: prompt });
+          history.push({ role: 'assistant', content: data.final_response });
+          if (data.created_files && data.created_files.length) {
+            await refreshFiles(true, data.files);
+          }
+          return;
+        }
+
+        // Direct Streaming from Colab /chat_stream (avoids Cloudflare 524 & Vercel timeouts)
+        const liveDiv = document.createElement('div');
+        liveDiv.className = 'msg ai';
+        liveDiv.innerHTML = `<div class="bubble"><div class="final-text">⏳ Generating on Colab GPU...</div></div>`;
+        chatBox.appendChild(liveDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        const liveTextEl = liveDiv.querySelector('.final-text');
+
+        const sysPrompt = agentToggle.checked
+          ? activeSystemPrompt + '\n\n' + agentInstructions
+          : activeSystemPrompt;
+
+        const streamRes = await fetch(activeColabUrl.replace(/\/$/, '') + '/chat_stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt,
+            system_prompt: sysPrompt,
             history: history.slice(-6),
-            enable_thinking: thinkingToggle.checked,
-            agent_mode: agentToggle.checked
+            enable_thinking: thinkingToggle.checked
           })
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Request failed');
 
-        appendAiMsg(data);
+        if (!streamRes.ok || !streamRes.body) {
+          throw new Error('Colab stream failed (' + streamRes.status + ')');
+        }
+
+        const reader = streamRes.body.getReader();
+        const decoder = new TextDecoder();
+        let rawAccumulated = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          rawAccumulated += decoder.decode(value, { stream: true });
+          liveTextEl.textContent = rawAccumulated;
+          chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        const latencyMs = Math.round(performance.now() - startTime);
+        const parsed = parseStreamedText(rawAccumulated);
+        liveDiv.remove();
+
+        let interactionId = 0;
+        try {
+          const logRes = await fetch('/api/log-interaction', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt,
+              thinking: parsed.thinking,
+              final_response: parsed.finalResponse,
+              model_version: activeVersion,
+              latency_ms: latencyMs
+            })
+          });
+          const logData = await logRes.json();
+          interactionId = logData.interaction_id || 0;
+        } catch (e) {}
+
+        appendAiMsg({
+          interaction_id: interactionId,
+          model_version: activeVersion,
+          thinking: parsed.thinking,
+          final_response: parsed.finalResponse,
+          created_files: parsed.files.map(f => f.filename),
+          latency_ms: latencyMs
+        });
+
         history.push({ role: 'user', content: prompt });
-        history.push({ role: 'assistant', content: data.final_response });
-        if (data.created_files && data.created_files.length) {
-          await refreshFiles(true, data.files);
+        history.push({ role: 'assistant', content: parsed.finalResponse });
+
+        if (parsed.files.length) {
+          await refreshFiles(true, parsed.files);
         }
       } catch (err) {
         appendAiMsg({

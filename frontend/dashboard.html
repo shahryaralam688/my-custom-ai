@@ -249,13 +249,19 @@
     }
 
     async function saveSettings() {
+      const colabUrl = document.getElementById('colabUrl').value.trim();
+      const systemPrompt = document.getElementById('systemPrompt').value.trim();
+      const activeVersion = document.getElementById('activeVersion').value.trim() || 'v1.0-base';
+      localStorage.setItem('custom_ai_colab_url', colabUrl);
+      localStorage.setItem('custom_ai_system_prompt', systemPrompt);
+      localStorage.setItem('custom_ai_active_version', activeVersion);
       await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          colab_url: document.getElementById('colabUrl').value,
-          system_prompt: document.getElementById('systemPrompt').value,
-          active_version: document.getElementById('activeVersion').value
+          colab_url: colabUrl,
+          system_prompt: systemPrompt,
+          active_version: activeVersion
         })
       });
       loadAll();
